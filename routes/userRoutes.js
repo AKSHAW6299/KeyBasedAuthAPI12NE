@@ -6,13 +6,13 @@ import { apiKeyAuth } from "../middleware/apiKeyAuth.js";
 
 const router = express.Router();
 
-// Generate RAW API key for user (not hashed)
+// Generate RAW API key for user
 function generateApiKey() {
   return crypto.randomBytes(Number(process.env.API_KEY_BYTES)).toString("hex");
 }
 
 // ===============================
-// 🧩 1. USER SIGNUP (username + password)
+// 🧩 1. USER SIGNUP
 // ===============================
 router.post("/signup", (req, res) => {
   const { username, password } = req.body;
@@ -22,17 +22,24 @@ router.post("/signup", (req, res) => {
 
   const hashedPassword = bcrypt.hashSync(password, 10);
 
-  const query = "INSERT INTO users (username, password_hash) VALUES (?, ?)";
+  const query = "INSERT INTO users (username, password) VALUES (?, ?)";
 
   db.query(query, [username, hashedPassword], (err) => {
-    if (err) return res.status(500).json({ message: "User already exists or DB error" });
+    if (err) {
+      console.error("MYSQL ERROR:", err);
+      return res.status(500).json({
+        message: "DB Error",
+        error: err.code,
+        sqlMessage: err.sqlMessage
+      });
+    }
 
     res.json({ message: "User registered successfully" });
   });
 });
 
 // ===============================
-// 🧩 2. LOGIN (creates new API KEY)
+// 🧩 2. LOGIN — Generates NEW API KEY
 // ===============================
 router.post("/login", (req, res) => {
   const { username, password } = req.body;
@@ -50,16 +57,13 @@ router.post("/login", (req, res) => {
 
     const user = results[0];
 
-    // Check password
-    const validPassword = bcrypt.compareSync(password, user.password_hash);
-    if (!validPassword)
+    if (!bcrypt.compareSync(password, user.password))
       return res.status(403).json({ message: "Invalid password" });
 
-    // Generate new API key
     const rawApiKey = generateApiKey();
     const hashedApiKey = bcrypt.hashSync(rawApiKey, 10);
 
-    const updateQuery = "UPDATE users SET api_key_hash = ? WHERE id = ?";
+    const updateQuery = "UPDATE users SET api_key = ? WHERE id = ?";
 
     db.query(updateQuery, [hashedApiKey, user.id], (err) => {
       if (err) return res.status(500).json({ message: "DB update error" });
@@ -73,7 +77,7 @@ router.post("/login", (req, res) => {
 });
 
 // ===============================
-// 🧩 3. PROTECTED ROUTE USING MIDDLEWARE
+// 🧩 3. PROTECTED ROUTE
 // ===============================
 router.get("/protected", apiKeyAuth, (req, res) => {
   res.json({

@@ -14,7 +14,7 @@ export const apiKeyAuth = (req, res, next) => {
     let validUser = null;
 
     for (const user of users) {
-      if (bcrypt.compareSync(apiKey, user.api_key_hash)) {
+      if (bcrypt.compareSync(apiKey, user.api_key)) {
         validUser = user;
         break;
       }
